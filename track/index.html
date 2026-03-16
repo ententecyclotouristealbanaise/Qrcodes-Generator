@@ -1,0 +1,187 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Redirection QR</title>
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-2GXW53BPMY"></script>
+<script>
+  window.dataLayer = window.dataLayer || [];
+  function gtag(){window.dataLayer.push(arguments);}
+  gtag('js', new Date());
+  gtag('config', 'G-2GXW53BPMY');
+</script>
+<style>
+:root{
+  --bg:#eef3f8;
+  --card:#ffffff;
+  --text:#17324d;
+  --muted:#68809b;
+  --accent:#0066b8;
+  --border:#d6e0ea;
+}
+*{box-sizing:border-box}
+body{
+  margin:0;
+  min-height:100vh;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  padding:24px;
+  font-family:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+  background:radial-gradient(circle at top left, rgba(0,102,184,.09), transparent 35%), linear-gradient(180deg, #f7fafc 0%, var(--bg) 100%);
+  color:var(--text);
+}
+.card{
+  width:min(100%, 560px);
+  background:var(--card);
+  border:1px solid var(--border);
+  border-radius:20px;
+  padding:28px;
+  box-shadow:0 24px 60px rgba(18, 56, 90, .10);
+}
+h1{
+  margin:0 0 12px;
+  font-size:clamp(1.6rem, 4vw, 2rem);
+}
+p{
+  margin:0 0 12px;
+  line-height:1.6;
+}
+.meta{
+  margin-top:18px;
+  padding:14px 16px;
+  border-radius:14px;
+  background:#f6f9fc;
+  border:1px solid var(--border);
+  color:var(--muted);
+  word-break:break-word;
+}
+.meta strong{
+  color:var(--accent);
+}
+.link{
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  margin-top:18px;
+  padding:12px 18px;
+  border-radius:999px;
+  background:var(--accent);
+  color:#fff;
+  text-decoration:none;
+  font-weight:700;
+}
+.error{
+  color:#b42318;
+}
+</style>
+</head>
+<body>
+  <main class="card">
+    <h1>Redirection en cours</h1>
+    <p id="status">Nous enregistrons le scan puis nous ouvrons la destination.</p>
+    <div class="meta">
+      <p><strong>QR :</strong> <span id="qr-id">-</span></p>
+      <p><strong>Destination :</strong> <span id="destination">-</span></p>
+    </div>
+    <a id="manual-link" class="link" href="#" rel="noopener">Ouvrir la destination</a>
+  </main>
+
+<script>
+const params = new URLSearchParams(window.location.search);
+const qrId = params.get('qr') || 'qr-unknown';
+const DEFAULT_GA_MEASUREMENT_ID = 'G-2GXW53BPMY';
+const gaId = (params.get('ga') || DEFAULT_GA_MEASUREMENT_ID).trim().toUpperCase();
+const rawTarget = params.get('target') || '';
+const allowedProtocols = new Set(['http:', 'https:']);
+let targetUrl = null;
+
+function setStatus(message, isError) {
+  const status = document.getElementById('status');
+  status.textContent = message;
+  status.className = isError ? 'error' : '';
+}
+
+function parseTarget(value) {
+  try {
+    const url = new URL(value);
+    if (!allowedProtocols.has(url.protocol)) return null;
+    return url;
+  } catch {
+    return null;
+  }
+}
+
+function redirectNow() {
+  if (!targetUrl) return;
+  window.location.replace(targetUrl.toString());
+}
+
+function initGtag(id) {
+  return new Promise(resolve => {
+    if (!/^G-[A-Z0-9]+$/i.test(id)) {
+      resolve(false);
+      return;
+    }
+    window.dataLayer = window.dataLayer || [];
+    window.gtag = window.gtag || function(){ window.dataLayer.push(arguments); };
+    const existing = document.querySelector(`script[data-ga-id="${id}"]`);
+    const finalize = () => {
+      window.gtag('js', new Date());
+      window.gtag('config', id, { page_path: window.location.pathname, send_page_view: true });
+      resolve(true);
+    };
+    if (id === DEFAULT_GA_MEASUREMENT_ID || existing) {
+      finalize();
+      return;
+    }
+    const script = document.createElement('script');
+    script.async = true;
+    script.dataset.gaId = id;
+    script.src = `https://www.googletagmanager.com/gtag/js?id=${encodeURIComponent(id)}`;
+    script.onload = finalize;
+    script.onerror = () => resolve(false);
+    document.head.appendChild(script);
+  });
+}
+
+async function run() {
+  document.getElementById('qr-id').textContent = qrId;
+  targetUrl = parseTarget(rawTarget);
+  if (!targetUrl) {
+    setStatus('Destination invalide ou non autorisée.', true);
+    document.getElementById('destination').textContent = 'URL invalide';
+    document.getElementById('manual-link').style.display = 'none';
+    return;
+  }
+
+  document.getElementById('destination').textContent = targetUrl.toString();
+  document.getElementById('manual-link').href = targetUrl.toString();
+
+  const gtagReady = await initGtag(gaId);
+  if (gtagReady) {
+    let redirected = false;
+    const safeRedirect = () => {
+      if (redirected) return;
+      redirected = true;
+      redirectNow();
+    };
+    window.gtag('event', 'qr_scan', {
+      qr_id: qrId,
+      destination_host: targetUrl.host,
+      destination_url: targetUrl.toString(),
+      event_callback: safeRedirect,
+      event_timeout: 900
+    });
+    window.setTimeout(safeRedirect, 900);
+    return;
+  }
+
+  window.setTimeout(redirectNow, 250);
+}
+
+run();
+</script>
+</body>
+</html>

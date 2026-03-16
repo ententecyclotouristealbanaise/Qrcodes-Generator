@@ -4,6 +4,13 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>QR Studio</title>
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-2GXW53BPMY"></script>
+<script>
+  window.dataLayer = window.dataLayer || [];
+  function gtag(){window.dataLayer.push(arguments);}
+  gtag('js', new Date());
+  gtag('config', 'G-2GXW53BPMY');
+</script>
 <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=Plus+Jakarta+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
@@ -114,6 +121,14 @@ header p{color:var(--muted);font-size:1rem;font-weight:400;margin-top:8px}
 }
 .field textarea{resize:vertical;min-height:80px}
 .field-row{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.field-help{
+  font-size:.74rem;color:var(--muted);margin-top:6px;line-height:1.5;
+}
+.note-box{
+  background:var(--surface2);border:1.5px solid var(--border);border-radius:10px;
+  padding:12px 14px;font-size:.75rem;color:var(--muted);line-height:1.55;margin-bottom:14px;
+}
+.note-box strong{color:var(--accent)}
 
 /* Map */
 #map-container{
@@ -314,6 +329,36 @@ input[type=color]{
       </div>
 
       <div class="divider"></div>
+      <div class="card-title">Tracking</div>
+
+      <div class="toggle-row">
+        <label class="toggle"><input type="checkbox" id="trackToggle" onchange="toggleTrackingOptions()"><span class="toggle-slider"></span></label>
+        <span class="toggle-label">Mesurer les scans dans Google Analytics</span>
+      </div>
+
+      <div id="track-opts" style="display:none">
+        <div class="field">
+          <label>ID de mesure GA4</label>
+          <input type="text" id="gaMeasurementId" placeholder="G-2GXW53BPMY" oninput="persistTrackingSettings()">
+          <div class="field-help">Utilisé sur la page de redirection pour remonter les scans dans votre propriété GA4.</div>
+        </div>
+        <div class="field">
+          <label>URL publique du site</label>
+          <input type="url" id="trackBaseUrl" placeholder="https://votredomaine.com" oninput="persistTrackingSettings()">
+          <div class="field-help">Le QR pointera vers /track/ sur ce domaine avant d'ouvrir la destination finale.</div>
+        </div>
+        <div class="field">
+          <label>Identifiant du QR (optionnel)</label>
+          <input type="text" id="trackLabel" placeholder="affiche-printemps-2026">
+          <div class="field-help">Laissez vide pour générer automatiquement un identifiant unique.</div>
+        </div>
+      </div>
+
+      <div class="note-box" id="tracking-note">
+        <strong>Important :</strong> le tracking des scans fonctionne pour les QR de type URL, via la page /track/. Les types WiFi, vCard, SMS, téléphone ou texte ne peuvent pas remonter un scan dans Google Analytics sans passer par une page web intermédiaire.
+      </div>
+
+      <div class="divider"></div>
       <div class="card-title">Apparence</div>
 
       <div class="color-row">
@@ -420,6 +465,8 @@ let logoNaturalH = 1;
 let mapInstance = null;
 let mapMarker = null;
 let lastCanvas = null;
+let lastDownloadName = 'qrcode';
+const DEFAULT_GA_MEASUREMENT_ID = 'G-2GXW53BPMY';
 
 const forms = {
   url:`<div class="field"><label>Adresse URL</label><input type="url" id="f-url" placeholder="https://exemple.com"/></div>`,
@@ -463,6 +510,7 @@ function setType(type) {
   document.getElementById('map-hint').style.display = isGeo ? 'block' : 'none';
   if (isGeo) setTimeout(initMap, 60);
   else if (mapInstance) { mapInstance.remove(); mapInstance = null; }
+  updateTrackingAvailability();
 }
 
 function initMap() {
@@ -488,6 +536,145 @@ function initMap() {
 }
 
 function v(id){ const el=document.getElementById(id); return el?el.value.trim():'' }
+
+function getDefaultPublicBaseUrl() {
+  return new URL('.', window.location.href).toString().replace(/\/$/, '');
+}
+
+function sanitizeSlug(value) {
+  return value
+    .toLowerCase()
+    .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 80);
+}
+
+function makeTimestampId() {
+  const now = new Date();
+  const pad = number => String(number).padStart(2, '0');
+  return [
+    'qr',
+    now.getFullYear(),
+    pad(now.getMonth() + 1),
+    pad(now.getDate()),
+    pad(now.getHours()),
+    pad(now.getMinutes()),
+    pad(now.getSeconds())
+  ].join('');
+}
+
+function isValidGaId(value) {
+  return /^G-[A-Z0-9]+$/i.test((value || '').trim());
+}
+
+function normalizePublicBaseUrl(value) {
+  const fallback = getDefaultPublicBaseUrl();
+  const raw = (value || '').trim();
+  if (!raw) return fallback;
+  const candidate = /^https?:\/\//i.test(raw) ? raw : `https://${raw}`;
+  const url = new URL(candidate);
+  const pathname = url.pathname.endsWith('.html') ? new URL('.', url).pathname : url.pathname;
+  return `${url.origin}${pathname.replace(/\/$/, '')}`;
+}
+
+function buildTargetUrl(rawTarget, qrId) {
+  const normalizedInput = /^https?:\/\//i.test(rawTarget) ? rawTarget : `https://${rawTarget}`;
+  const targetUrl = new URL(normalizedInput);
+  if (!targetUrl.searchParams.has('utm_source')) targetUrl.searchParams.set('utm_source', 'qr_code');
+  if (!targetUrl.searchParams.has('utm_medium')) targetUrl.searchParams.set('utm_medium', 'offline');
+  if (!targetUrl.searchParams.has('utm_campaign')) targetUrl.searchParams.set('utm_campaign', 'qr_scan');
+  if (!targetUrl.searchParams.has('utm_content')) targetUrl.searchParams.set('utm_content', qrId);
+  return targetUrl.toString();
+}
+
+function buildTrackedContent(rawContent) {
+  const trackingEnabled = document.getElementById('trackToggle').checked;
+  if (!trackingEnabled || currentType !== 'url') {
+    return {
+      content: rawContent,
+      target: rawContent,
+      trackingEnabled: false,
+      qrId: null
+    };
+  }
+
+  const qrId = sanitizeSlug(v('trackLabel')) || makeTimestampId();
+  const gaId = (v('gaMeasurementId') || DEFAULT_GA_MEASUREMENT_ID).toUpperCase();
+  const baseUrl = normalizePublicBaseUrl(v('trackBaseUrl'));
+  const trackedTarget = buildTargetUrl(rawContent, qrId);
+  const redirectUrl = new URL('track/', `${baseUrl}/`);
+  redirectUrl.searchParams.set('target', trackedTarget);
+  redirectUrl.searchParams.set('qr', qrId);
+  if (isValidGaId(gaId)) redirectUrl.searchParams.set('ga', gaId);
+
+  return {
+    content: redirectUrl.toString(),
+    target: trackedTarget,
+    trackingEnabled: true,
+    qrId,
+    gaId
+  };
+}
+
+function persistTrackingSettings() {
+  localStorage.setItem('qrStudio.trackEnabled', document.getElementById('trackToggle').checked ? '1' : '0');
+  localStorage.setItem('qrStudio.gaMeasurementId', v('gaMeasurementId'));
+  localStorage.setItem('qrStudio.trackBaseUrl', v('trackBaseUrl'));
+}
+
+function toggleTrackingOptions() {
+  const enabled = document.getElementById('trackToggle').checked;
+  document.getElementById('track-opts').style.display = enabled ? 'block' : 'none';
+  persistTrackingSettings();
+  updateTrackingAvailability();
+}
+
+function updateTrackingAvailability() {
+  const note = document.getElementById('tracking-note');
+  if (!note) return;
+  if (currentType === 'url') {
+    note.innerHTML = '<strong>Mode URL :</strong> chaque scan passe par la page track/, envoie un événement à Google Analytics puis redirige vers la destination finale avec des paramètres UTM.';
+  } else {
+    note.innerHTML = '<strong>Limite technique :</strong> le tracking des scans fonctionne pour les QR de type URL. Les types WiFi, vCard, SMS, téléphone ou texte ne remontent pas de scan dans Google Analytics sans page web intermédiaire.';
+  }
+}
+
+function loadTrackingSettings() {
+  const enabled = localStorage.getItem('qrStudio.trackEnabled') === '1';
+  const savedGaId = localStorage.getItem('qrStudio.gaMeasurementId') || DEFAULT_GA_MEASUREMENT_ID;
+  const savedBaseUrl = localStorage.getItem('qrStudio.trackBaseUrl') || getDefaultPublicBaseUrl();
+  document.getElementById('trackToggle').checked = enabled;
+  document.getElementById('gaMeasurementId').value = savedGaId;
+  document.getElementById('trackBaseUrl').value = savedBaseUrl;
+  toggleTrackingOptions();
+}
+
+function trackGeneration(tracking) {
+  if (!tracking.trackingEnabled || !isValidGaId(tracking.gaId)) return;
+  window.dataLayer = window.dataLayer || [];
+  window.gtag = window.gtag || function(){ window.dataLayer.push(arguments); };
+  const existing = document.querySelector(`script[data-ga-id="${tracking.gaId}"]`);
+  const dispatch = () => {
+    window.gtag('js', new Date());
+    window.gtag('config', tracking.gaId, { send_page_view: false });
+    window.gtag('event', 'qr_generated', {
+      qr_id: tracking.qrId,
+      destination_host: new URL(tracking.target).host,
+      destination_url: tracking.target
+    });
+  };
+  if (tracking.gaId === DEFAULT_GA_MEASUREMENT_ID || existing) {
+    dispatch();
+    return;
+  }
+  const script = document.createElement('script');
+  script.async = true;
+  script.dataset.gaId = tracking.gaId;
+  script.src = `https://www.googletagmanager.com/gtag/js?id=${encodeURIComponent(tracking.gaId)}`;
+  script.onload = dispatch;
+  document.head.appendChild(script);
+}
 
 function getContent() {
   switch(currentType) {
@@ -565,7 +752,20 @@ function removeLogo() {
 }
 
 function generateQR() {
-  const content = getContent();
+  const rawContent = getContent();
+  if (document.getElementById('trackToggle').checked && currentType !== 'url') {
+    showToast('Tracking GA appliqué uniquement aux QR URL');
+  }
+
+  let tracking;
+  try {
+    tracking = buildTrackedContent(rawContent);
+  } catch(e) {
+    showToast('⚠ Vérifiez l\'URL publique et la destination');
+    return;
+  }
+
+  const content = tracking.content;
   const size = parseInt(document.getElementById('sizeRange').value);
   const bgColor = document.getElementById('bgColor').value;
   const useGrad = document.getElementById('gradToggle').checked;
@@ -635,11 +835,11 @@ function generateQR() {
         ctx.restore();
       }
       ctx.drawImage(img, lx, ly, logoW, logoH);
-      finalizeQR(canvas, content);
+      finalizeQR(canvas, tracking);
     };
     img.src = logoDataURL;
   } else {
-    finalizeQR(canvas, content);
+    finalizeQR(canvas, tracking);
   }
 }
 
@@ -652,8 +852,9 @@ function roundRect(ctx,x,y,w,h,r){
   ctx.closePath();
 }
 
-function finalizeQR(canvas, content) {
+function finalizeQR(canvas, tracking) {
   lastCanvas = canvas;
+  lastDownloadName = tracking.qrId || 'qrcode';
   const wrap = document.getElementById('qr-canvas-wrap');
   wrap.innerHTML = '';
   canvas.classList.add('pop-anim');
@@ -663,16 +864,17 @@ function finalizeQR(canvas, content) {
   document.getElementById('qr-display').classList.add('has-qr');
   document.getElementById('btn-dl').disabled = false;
   document.getElementById('btn-cp').disabled = false;
-  const prev = content.length > 55 ? content.substring(0,55)+'…' : content;
+  const prev = tracking.content.length > 55 ? tracking.content.substring(0,55)+'…' : tracking.content;
   document.getElementById('qr-preview-text').textContent = prev;
   document.getElementById('qr-info').style.display = 'block';
+  trackGeneration(tracking);
   showToast('QR code généré ✓');
 }
 
 function downloadQR() {
   if (!lastCanvas) return;
   const a = document.createElement('a');
-  a.download = 'qrcode.png';
+  a.download = `${lastDownloadName}.png`;
   a.href = lastCanvas.toDataURL('image/png');
   a.click();
   showToast('Image téléchargée ⬇');
@@ -701,6 +903,7 @@ function showToast(msg) {
   setTimeout(()=>t.classList.remove('show'), 2500);
 }
 
+loadTrackingSettings();
 setType('url');
 </script>
 </body>
