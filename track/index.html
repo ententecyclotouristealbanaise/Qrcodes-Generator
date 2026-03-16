@@ -1,6 +1,14 @@
 <!DOCTYPE html>
 <html lang="fr">
 <head>
+<!-- Google tag (gtag.js) -->
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-2GXW53BPMY"></script>
+<script>
+  window.dataLayer = window.dataLayer || [];
+  function gtag(){dataLayer.push(arguments);}
+  gtag('js', new Date());
+  gtag('config', 'G-2GXW53BPMY');
+</script>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Redirection QR</title>
@@ -86,6 +94,7 @@ p{
   <main class="card">
     <h1>Redirection en cours</h1>
     <p id="status">Nous enregistrons le scan puis nous ouvrons la destination.</p>
+    <p class="rgpd">RGPD : ce scan peut être mesuré à des fins statistiques anonymisées.</p>
     <p class="rgpd">RGPD : ce scan peut être mesuré à des fins statistiques anonymisées.</p>
     <div class="meta">
       <p><strong>QR :</strong> <span id="qr-id">-</span></p>
