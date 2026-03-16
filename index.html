@@ -121,15 +121,6 @@ header p{color:var(--muted);font-size:1rem;font-weight:400;margin-top:8px}
 }
 .field textarea{resize:vertical;min-height:80px}
 .field-row{display:grid;grid-template-columns:1fr 1fr;gap:12px}
-.field-help{
-  font-size:.74rem;color:var(--muted);margin-top:6px;line-height:1.5;
-}
-.note-box{
-  background:var(--surface2);border:1.5px solid var(--border);border-radius:10px;
-  padding:12px 14px;font-size:.75rem;color:var(--muted);line-height:1.55;margin-bottom:14px;
-}
-.note-box strong{color:var(--accent)}
-
 /* Map */
 #map-container{
   margin-bottom:14px;border-radius:12px;overflow:hidden;
@@ -329,37 +320,6 @@ input[type=color]{
       </div>
 
       <div class="divider"></div>
-      <div class="card-title">Tracking</div>
-
-      <div class="toggle-row">
-        <label class="toggle"><input type="checkbox" id="trackToggle" onchange="toggleTrackingOptions()"><span class="toggle-slider"></span></label>
-        <span class="toggle-label">Mesurer les scans dans Google Analytics</span>
-      </div>
-
-      <div id="track-opts" style="display:none">
-        <div class="field">
-          <label>ID de mesure GA4</label>
-          <input type="text" id="gaMeasurementId" placeholder="G-2GXW53BPMY" oninput="persistTrackingSettings()">
-          <div class="field-help">Utilisé sur la page de redirection pour remonter les scans dans votre propriété GA4.</div>
-        </div>
-        <div class="field">
-          <label>URL publique du site</label>
-          <input type="url" id="trackBaseUrl" placeholder="https://votredomaine.com" oninput="persistTrackingSettings()">
-          <div class="field-help">Le QR pointera vers /track/ sur ce domaine avant d'ouvrir la destination finale.</div>
-        </div>
-        <div class="field">
-          <label>Identifiant du QR (optionnel)</label>
-          <input type="text" id="trackLabel" placeholder="affiche-printemps-2026">
-          <div class="field-help">Laissez vide pour générer automatiquement un identifiant unique.</div>
-        </div>
-        <div class="field-help">RGPD : informez les utilisateurs que le scan du QR code peut être mesuré à des fins statistiques.</div>
-      </div>
-
-      <div class="note-box" id="tracking-note">
-        <strong>Important :</strong> le tracking des scans fonctionne pour les QR de type URL, via la page /track/. Les types WiFi, vCard, SMS, téléphone ou texte ne peuvent pas remonter un scan dans Google Analytics sans passer par une page web intermédiaire.
-      </div>
-
-      <div class="divider"></div>
       <div class="card-title">Apparence</div>
 
       <div class="color-row">
@@ -511,7 +471,6 @@ function setType(type) {
   document.getElementById('map-hint').style.display = isGeo ? 'block' : 'none';
   if (isGeo) setTimeout(initMap, 60);
   else if (mapInstance) { mapInstance.remove(); mapInstance = null; }
-  updateTrackingAvailability();
 }
 
 function initMap() {
@@ -569,16 +528,6 @@ function isValidGaId(value) {
   return /^G-[A-Z0-9]+$/i.test((value || '').trim());
 }
 
-function normalizePublicBaseUrl(value) {
-  const fallback = getDefaultPublicBaseUrl();
-  const raw = (value || '').trim();
-  if (!raw) return fallback;
-  const candidate = /^https?:\/\//i.test(raw) ? raw : `https://${raw}`;
-  const url = new URL(candidate);
-  const pathname = url.pathname.endsWith('.html') ? new URL('.', url).pathname : url.pathname;
-  return `${url.origin}${pathname.replace(/\/$/, '')}`;
-}
-
 function buildTargetUrl(rawTarget, qrId) {
   const normalizedInput = /^https?:\/\//i.test(rawTarget) ? rawTarget : `https://${rawTarget}`;
   const targetUrl = new URL(normalizedInput);
@@ -590,8 +539,7 @@ function buildTargetUrl(rawTarget, qrId) {
 }
 
 function buildTrackedContent(rawContent) {
-  const trackingEnabled = document.getElementById('trackToggle').checked;
-  if (!trackingEnabled || currentType !== 'url') {
+  if (currentType !== 'url') {
     return {
       content: rawContent,
       target: rawContent,
@@ -600,9 +548,9 @@ function buildTrackedContent(rawContent) {
     };
   }
 
-  const qrId = sanitizeSlug(v('trackLabel')) || makeTimestampId();
-  const gaId = (v('gaMeasurementId') || DEFAULT_GA_MEASUREMENT_ID).toUpperCase();
-  const baseUrl = normalizePublicBaseUrl(v('trackBaseUrl'));
+  const qrId = makeTimestampId();
+  const gaId = DEFAULT_GA_MEASUREMENT_ID;
+  const baseUrl = getDefaultPublicBaseUrl();
   const trackedTarget = buildTargetUrl(rawContent, qrId);
   const redirectUrl = new URL('track/', `${baseUrl}/`);
   redirectUrl.searchParams.set('target', trackedTarget);
@@ -616,39 +564,6 @@ function buildTrackedContent(rawContent) {
     qrId,
     gaId
   };
-}
-
-function persistTrackingSettings() {
-  localStorage.setItem('qrStudio.trackEnabled', document.getElementById('trackToggle').checked ? '1' : '0');
-  localStorage.setItem('qrStudio.gaMeasurementId', v('gaMeasurementId'));
-  localStorage.setItem('qrStudio.trackBaseUrl', v('trackBaseUrl'));
-}
-
-function toggleTrackingOptions() {
-  const enabled = document.getElementById('trackToggle').checked;
-  document.getElementById('track-opts').style.display = enabled ? 'block' : 'none';
-  persistTrackingSettings();
-  updateTrackingAvailability();
-}
-
-function updateTrackingAvailability() {
-  const note = document.getElementById('tracking-note');
-  if (!note) return;
-  if (currentType === 'url') {
-    note.innerHTML = '<strong>Mode URL :</strong> chaque scan passe par la page track/, envoie un événement à Google Analytics puis redirige vers la destination finale avec des paramètres UTM.';
-  } else {
-    note.innerHTML = '<strong>Limite technique :</strong> le tracking des scans fonctionne pour les QR de type URL. Les types WiFi, vCard, SMS, téléphone ou texte ne remontent pas de scan dans Google Analytics sans page web intermédiaire.';
-  }
-}
-
-function loadTrackingSettings() {
-  const enabled = localStorage.getItem('qrStudio.trackEnabled') === '1';
-  const savedGaId = localStorage.getItem('qrStudio.gaMeasurementId') || DEFAULT_GA_MEASUREMENT_ID;
-  const savedBaseUrl = localStorage.getItem('qrStudio.trackBaseUrl') || getDefaultPublicBaseUrl();
-  document.getElementById('trackToggle').checked = enabled;
-  document.getElementById('gaMeasurementId').value = savedGaId;
-  document.getElementById('trackBaseUrl').value = savedBaseUrl;
-  toggleTrackingOptions();
 }
 
 function trackGeneration(tracking) {
@@ -754,9 +669,6 @@ function removeLogo() {
 
 function generateQR() {
   const rawContent = getContent();
-  if (document.getElementById('trackToggle').checked && currentType !== 'url') {
-    showToast('Tracking GA appliqué uniquement aux QR URL');
-  }
 
   let tracking;
   try {
@@ -904,7 +816,6 @@ function showToast(msg) {
   setTimeout(()=>t.classList.remove('show'), 2500);
 }
 
-loadTrackingSettings();
 setType('url');
 </script>
 </body>
