@@ -9,7 +9,7 @@
   window.dataLayer = window.dataLayer || [];
   function gtag(){window.dataLayer.push(arguments);}
   gtag('js', new Date());
-  gtag('config', 'G-2GXW53BPMY');
+  gtag('config', 'G-2GXW53BPMY', { send_page_view: false });
 </script>
 <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=Plus+Jakarta+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
@@ -292,6 +292,11 @@ input[type=color]{
       <h1>QR Studio</h1>
     </div>
     <p>Créez des QR codes personnalisés — dégradés, logo, carte interactive</p>
+    <div style="margin-top:10px">
+      <a href="stats.html" style="color:var(--accent);text-decoration:none;font-size:0.85rem;font-weight:600;display:inline-flex;align-items:center;gap:5px">
+        <span style="font-size:1rem">📊</span> Voir mes statistiques (Looker Studio)
+      </a>
+    </div>
   </header>
 
   <div class="main-grid">
@@ -566,31 +571,7 @@ function buildTrackedContent(rawContent) {
   };
 }
 
-function trackGeneration(tracking) {
-  if (!tracking.trackingEnabled || !isValidGaId(tracking.gaId)) return;
-  window.dataLayer = window.dataLayer || [];
-  window.gtag = window.gtag || function(){ window.dataLayer.push(arguments); };
-  const existing = document.querySelector(`script[data-ga-id="${tracking.gaId}"]`);
-  const dispatch = () => {
-    window.gtag('js', new Date());
-    window.gtag('config', tracking.gaId, { send_page_view: false });
-    window.gtag('event', 'qr_generated', {
-      qr_id: tracking.qrId,
-      destination_host: new URL(tracking.target).host,
-      destination_url: tracking.target
-    });
-  };
-  if (tracking.gaId === DEFAULT_GA_MEASUREMENT_ID || existing) {
-    dispatch();
-    return;
-  }
-  const script = document.createElement('script');
-  script.async = true;
-  script.dataset.gaId = tracking.gaId;
-  script.src = `https://www.googletagmanager.com/gtag/js?id=${encodeURIComponent(tracking.gaId)}`;
-  script.onload = dispatch;
-  document.head.appendChild(script);
-}
+
 
 function getContent() {
   switch(currentType) {
@@ -780,7 +761,7 @@ function finalizeQR(canvas, tracking) {
   const prev = tracking.content.length > 55 ? tracking.content.substring(0,55)+'…' : tracking.content;
   document.getElementById('qr-preview-text').textContent = prev;
   document.getElementById('qr-info').style.display = 'block';
-  trackGeneration(tracking);
+
   showToast('QR code généré ✓');
 }
 

@@ -1,24 +1,16 @@
 <!DOCTYPE html>
 <html lang="fr">
 <head>
-<!-- Google tag (gtag.js) -->
-<script async src="https://www.googletagmanager.com/gtag/js?id=G-2GXW53BPMY"></script>
-<script>
-  window.dataLayer = window.dataLayer || [];
-  function gtag(){dataLayer.push(arguments);}
-  gtag('js', new Date());
-  gtag('config', 'G-2GXW53BPMY');
-</script>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Redirection QR</title>
 <script async src="https://www.googletagmanager.com/gtag/js?id=G-2GXW53BPMY"></script>
 <script>
   window.dataLayer = window.dataLayer || [];
   function gtag(){window.dataLayer.push(arguments);}
   gtag('js', new Date());
-  gtag('config', 'G-2GXW53BPMY');
+  gtag('config', 'G-2GXW53BPMY', { send_page_view: false });
 </script>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Redirection QR</title>
 <style>
 :root{
   --bg:#eef3f8;
@@ -144,7 +136,7 @@ function initGtag(id) {
     const existing = document.querySelector(`script[data-ga-id="${id}"]`);
     const finalize = () => {
       window.gtag('js', new Date());
-      window.gtag('config', id, { page_path: window.location.pathname, send_page_view: true });
+      window.gtag('config', id, { page_path: window.location.pathname, send_page_view: false });
       resolve(true);
     };
     if (id === DEFAULT_GA_MEASUREMENT_ID || existing) {
